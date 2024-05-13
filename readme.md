@@ -1,7 +1,7 @@
 # Rusty RAG - LLM-powered Book Recommendation
 This project implements a simple semantic search and RAG use-case with rust, pgvector and ollama and serves a frontend and rest-api to recommend books based on the [CMU Book Summary Dataset](https://www.kaggle.com/datasets/ymaricar/cmu-book-summary-dataset/data).
 
-![Setup](img/setup.excalidraw.png | width=300)
+<img src="img/setup.excalidraw.png" width="300">
 
 # Setup
 
