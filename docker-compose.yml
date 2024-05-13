@@ -1,0 +1,30 @@
+services:
+  db:
+    hostname: db
+    image: ankane/pgvector
+    ports:
+     - 5432:5432
+    restart: always
+    environment:
+      - POSTGRES_DB=vectordb
+      - POSTGRES_USER=testuser
+      - POSTGRES_PASSWORD=testpwd
+      - POSTGRES_HOST_AUTH_METHOD=trust
+    volumes:
+     - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+  ollama:
+    image: ollama/ollama
+    ports:
+     - 11434:11434 
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        nohup ollama start </dev/null >/dev/null 2>&1 &
+        sleep 3
+        ollama pull phi3
+        sleep 1
+        pkill ollama
+        sleep 1
+        ollama serve
+    
