@@ -1,6 +1,7 @@
 mod config;
 mod model;
 mod rag_client;
+mod chat_completion;
 use anyhow::Result;
 use axum::{
     extract::{
@@ -16,6 +17,7 @@ use model::SearchQuery;
 use model::Summary;
 use rag_client::RagClient;
 use tokio_stream::StreamExt;
+use mistralrs::Response;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -65,12 +67,15 @@ async fn process_ws_message(msg: Message, ws: &mut WebSocket, client: &RagClient
     match msg {
         Message::Text(t) => {
             let summary = client.semantic_search(&t).await?;
-            let mut answer_stream = client.ollama_generate_stream(&t, &summary.summary).await?;
+            let mut answer_stream = client.chat_model_generate_stream(&t, &summary.summary).await?;
 
-            while let Some(res) = answer_stream.next().await {
-                let responses = res?;
-                for resp in responses {
-                    ws.send(Message::Text(resp.response)).await?;
+            while let Some(resp) = answer_stream.next().await {
+                match resp {
+                    Response::Chunk(chunk) => {
+                        let choice = &chunk.choices[0];
+                        ws.send(Message::Text(choice.delta.content.clone())).await?;
+                    },
+                    _ => unreachable!()
                 }
             }
             ws.send(Message::Text("CLOSE".to_owned())).await?;

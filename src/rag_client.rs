@@ -3,40 +3,36 @@ use anyhow::{anyhow, Result};
 use bb8::Pool;
 use bb8_postgres::PostgresConnectionManager;
 use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
-use ollama_rs::error::OllamaError;
-use ollama_rs::generation::completion::GenerationResponse;
-use ollama_rs::{generation::completion::request::GenerationRequest, Ollama};
 use ort::{
     CPUExecutionProvider, CUDAExecutionProvider, CoreMLExecutionProvider,
     DirectMLExecutionProvider, TensorRTExecutionProvider,
 };
 use pgvector::Vector;
-use std::pin::Pin;
+use tokio_stream::wrappers::ReceiverStream;
 use std::sync::Arc;
-use tokio::sync::Mutex;
 use tokio_postgres::NoTls;
-use tokio_stream::Stream;
+use super::chat_completion::CompletionModel;
 
 pub type ConnectionPool = Pool<PostgresConnectionManager<NoTls>>;
 
 #[derive(Clone)]
 pub struct RagClient {
-    ollama_client: Ollama,
-    embedding_model: Arc<Mutex<TextEmbedding>>,
+    chat_model: CompletionModel,
+    embedding_model: Arc<TextEmbedding>,
     db_pool: ConnectionPool,
 }
 
 impl RagClient {
     pub async fn new() -> Result<Self> {
         Ok(Self {
-            ollama_client: Self::create_ollama_client(),
+            chat_model: CompletionModel::new()?,
             embedding_model: Self::create_embedding_model().await?,
             db_pool: Self::create_pg_pool().await?,
         })
     }
 
-    async fn create_embedding_model() -> Result<Arc<Mutex<TextEmbedding>>> {
-        let model = Arc::new(Mutex::new(TextEmbedding::try_new(InitOptions {
+    async fn create_embedding_model() -> Result<Arc<TextEmbedding>> {
+        let model = Arc::new(TextEmbedding::try_new(InitOptions {
             model_name: EmbeddingModel::BGEBaseENV15Q,
             execution_providers: vec![
                 TensorRTExecutionProvider::default().build(),
@@ -48,7 +44,7 @@ impl RagClient {
                 CPUExecutionProvider::default().build(),
             ],
             ..Default::default()
-        })?));
+        })?);
         Ok(model)
     }
 
@@ -58,15 +54,8 @@ impl RagClient {
         Ok(db_pool)
     }
 
-    fn create_ollama_client() -> Ollama {
-        Ollama::new(
-            format!("http://{}", CONFIG.ollama_host).to_string(),
-            CONFIG.ollama_port,
-        )
-    }
-
     pub async fn embed(&self, text: &str) -> Result<Vector> {
-        let val = { self.embedding_model.lock().await.embed(vec![&text], None) };
+        let val = { self.embedding_model.embed(vec![&text], None) };
         let embedding_vec = val?.pop().ok_or(anyhow!("out of bounds"))?;
         Ok(Vector::from(embedding_vec))
     }
@@ -80,26 +69,11 @@ impl RagClient {
         Ok(Summary::from(row))
     }
 
-    pub async fn ollama_generate_stream(
+    pub async fn chat_model_generate_stream(
         &self,
         request: &str,
         summary_text: &str,
-    ) -> Result<
-        Pin<
-            Box<(dyn Stream<Item = Result<Vec<GenerationResponse>, OllamaError>> + Send + 'static)>,
-        >,
-        OllamaError,
-    > {
-        let prompt = format!("Given this book search request: {}, explain why the book with the following summary should be recommended, summary: {}", request, summary_text);
-        let stream = self
-            .ollama_client
-            .generate_stream(
-                GenerationRequest::new("phi3".to_owned(), prompt).system(
-                    "Answer the book search request using the summary provided. Be succinct."
-                        .to_owned(),
-                ),
-            )
-            .await;
-        stream
+    ) -> Result<ReceiverStream<mistralrs::Response>, anyhow::Error> {
+        self.chat_model.complete(&format!("Given this book search request: {}, explain why the book with the following summary should be recommended, summary: {}", request, summary_text)).await
     }
 }
