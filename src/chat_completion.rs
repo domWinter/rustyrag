@@ -1,20 +1,21 @@
-use std::sync::Arc;
 use candle_core::Device;
-use mistralrs::{
-    Constraint, DeviceMapMetadata, GGUFLoaderBuilder, GGUFSpecificConfig, MistralRs, MistralRsBuilder, NormalRequest, Request, RequestMessage, SamplingParams, SchedulerMethod, TokenSource
-};
 use indexmap::IndexMap;
+use mistralrs::{
+    Constraint, DeviceMapMetadata, GGUFLoaderBuilder, GGUFSpecificConfig, MistralRs,
+    MistralRsBuilder, NormalRequest, Request, RequestMessage, SamplingParams, SchedulerMethod,
+    TokenSource,
+};
+use std::sync::Arc;
 use tokio::sync::mpsc::channel;
 use tokio_stream::wrappers::ReceiverStream;
 
-
 #[derive(Clone)]
 pub struct CompletionModel {
-    pub mistralrs: Arc<MistralRs>
+    pub mistralrs: Arc<MistralRs>,
 }
 
 impl CompletionModel {
-    pub fn new() ->  anyhow::Result<Self> {
+    pub fn new() -> anyhow::Result<Self> {
         // Select a Mistral model
         let loader = GGUFLoaderBuilder::new(
             GGUFSpecificConfig { repeat_last_n: 64 },
@@ -25,23 +26,40 @@ impl CompletionModel {
             "mistral-7b-instruct-v0.2.Q4_K_M.gguf".to_string(),
         )
         .build();
-    
+
         let pipeline = loader.load_model_from_hf(
             None,
             TokenSource::CacheToken,
             None,
-            &Device::new_metal(0)?,
+            &Self::device()?,
             false,
             DeviceMapMetadata::dummy(),
             None,
         )?;
         // Create the MistralRs, which is a runner
-        Ok(Self {  
-            mistralrs:  MistralRsBuilder::new(pipeline, SchedulerMethod::Fixed(5.try_into().unwrap())).build()
+        Ok(Self {
+            mistralrs: MistralRsBuilder::new(
+                pipeline,
+                SchedulerMethod::Fixed(5.try_into().unwrap()),
+            )
+            .build(),
         })
     }
 
-    pub async fn complete(&self, request: &str) -> anyhow::Result<ReceiverStream<mistralrs::Response>> {
+    #[cfg(feature = "metal")]
+    fn device() -> anyhow::Result<Device> {
+        Ok(Device::new_metal(0)?)
+    }
+
+    #[cfg(not(feature = "metal"))]
+    fn device() -> anyhow::Result<Device> {
+        Ok(Device::cuda_if_available(0)?)
+    }
+
+    pub async fn complete(
+        &self,
+        request: &str,
+    ) -> anyhow::Result<ReceiverStream<mistralrs::Response>> {
         let (tx, rx) = channel(10_000);
 
         let mut messages = Vec::new();
@@ -61,8 +79,8 @@ impl CompletionModel {
             adapters: None,
         });
 
-       self.mistralrs.get_sender().send(request).await?;
-       
-       Ok(ReceiverStream::new(rx))
+        self.mistralrs.get_sender().send(request).await?;
+
+        Ok(ReceiverStream::new(rx))
     }
 }
