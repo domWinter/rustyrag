@@ -17,7 +17,7 @@ ollama-rs = { version = "0.1.9", features = ["stream"] }
 tokio-stream = "0.1.15"
 fastembed = "3.5.0"
 csv = "1.3.0"
-ort = { version = "2.0.0-rc.0", features=["coreml"] }
+ort = { version = "2.0.0-rc.0" }
 postgres = "0.19.7"
 pgvector = { version = "0.3", features = ["postgres"] }
 bb8 = "0.8.3"
@@ -25,9 +25,14 @@ bb8-postgres = "0.8.1"
 tokio-postgres = "0.7.10"
 anyhow = "1.0.83"
 lazy_static = "1.4.0"
-mistralrs = { git = "https://github.com/EricLBuehler/mistral.rs.git", features = ["metal"] }
-candle-core = { git = "https://github.com/EricLBuehler/candle.git", version = "0.5.0", features = ["metal"] }
+mistralrs = { git = "https://github.com/EricLBuehler/mistral.rs.git" }
+candle-core = { git = "https://github.com/EricLBuehler/candle.git", version = "0.5.0" }
 indexmap = "2.2.6"
+
+[features]
+metal = ["mistralrs/metal", "candle-core/metal", "ort/coreml"]
+cuda = ["mistralrs/cuda", "candle-core/cuda", "ort/cuda"]
+default = []
 
 [[bin]]
 name = "embedding-generator"
