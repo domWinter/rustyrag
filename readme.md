@@ -28,6 +28,20 @@ To authenticate your account, save the hugging face api token from [token-settin
 cargo run --release --bin rustyrag
 ```
 
+# Features
+You can accelerate embedding generation and chat completion via metal (Apple SNE) or cuda.
+Simply run the above command with 
+
+```bash
+cargo run --release --features cuda ...
+```
+
+or 
+
+```bash
+cargo run --release --features metal ...
+```
+
 # Troubleshooting
 
 ## Request Error 401
